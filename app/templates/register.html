@@ -7,6 +7,9 @@
 </head>
 <body>
     <h1>Register</h1>
+    {% if error %}
+        <p style="color:red;">{{ error }}</p>
+    {% endif %}
     <form method="POST" action="/register">
         <label>Username:</label><br>
         <input type="text" name="username" required><br>

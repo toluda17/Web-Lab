@@ -4,16 +4,77 @@ import os
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # Required for sessions
+DB_PATH = "database.db"  # Single database file
 
 # Database helper
 def get_db_connection():
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+# Initialize database if it doesn't exist
+def init_db():
+    """Initialize the database only if the users table doesn't exist."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Check if 'users' table exists
+    cursor.execute("""
+        SELECT name FROM sqlite_master WHERE type='table' AND name='users';
+    """)
+    table_exists = cursor.fetchone()
+
+    if not table_exists:
+        # Only create table if it doesn't exist
+        schema_path = os.path.join(os.path.dirname(__file__), "db", "schema.sql")
+        if os.path.exists(schema_path):
+            with open(schema_path, "r") as f:
+                conn.executescript(f.read())
+            print("Database initialized from schema.sql")
+        else:
+            # Fallback: create users table directly
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL
+                )
+            """)
+            print("Database initialized with default users table")
+        conn.commit()
+    else:
+        print("Users table already exists, skipping initialization")
+
+    conn.close()
+
 
 @app.route("/")
 def home():
     return render_template("home.html")
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    error = None  # To store any error message
+
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        conn = get_db_connection()  # <- use the same helper as other routes
+        try:
+            conn.execute(
+                "INSERT INTO users (username, password) VALUES (?, ?)", 
+                (username, password)
+            )
+            conn.commit()
+            return "Registration successful!"
+        except sqlite3.IntegrityError:
+            error = "Username already exists. Please choose another."
+        finally:
+            conn.close()
+
+    return render_template("register.html", error=error)
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -22,8 +83,11 @@ def login():
         password = request.form["password"]
 
         conn = get_db_connection()
-        # Intentionally vulnerable SQL injection
-        user = conn.execute(f"SELECT * FROM users WHERE username='{username}' AND password='{password}'").fetchone()
+        # Use parameterized query to prevent SQL injection
+        user = conn.execute(
+            "SELECT * FROM users WHERE username=? AND password=?",
+            (username, password)
+        ).fetchone()
         conn.close()
 
         if user:
@@ -33,21 +97,6 @@ def login():
             return "Invalid credentials"
 
     return render_template("login.html")
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
-
-        conn = get_db_connection()
-        conn.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
-        conn.commit()
-        conn.close()
-
-        return redirect(url_for("login"))
-
-    return render_template("register.html")
 
 @app.route("/profile")
 def profile():
@@ -59,16 +108,6 @@ def profile():
     conn.close()
 
     return render_template("profile.html", user=user)
-
-def init_db():
-    base_dir = os.path.dirname(os.path.dirname(__file__))  # project root
-    schema_path = os.path.join(base_dir, "db", "schema.sql")
-
-    conn = sqlite3.connect(os.path.join(base_dir, "database.db"))
-    with open(schema_path, "r") as f:
-        conn.executescript(f.read())
-    conn.commit()
-    conn.close()
 
 @app.route("/logout")
 def logout():
@@ -84,4 +123,6 @@ def upload():
     return "TODO: implement file upload functionality"
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    if not os.path.exists(DB_PATH):
+        init_db()
+    app.run(host="0.0.0.0", port=5000, debug=True)
