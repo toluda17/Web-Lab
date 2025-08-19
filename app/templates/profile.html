@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Profile</title>
+</head>
+<body>
+    <h1>Welcome, {{ user["username"] }}!</h1>
+    <p>Your user ID is: {{ user["id"] }}</p>
+
+    <a href="{{ url_for('home') }}">Home</a> |
+    <a href="{{ url_for('logout') }}">Logout</a>
+</body>
+</html>
