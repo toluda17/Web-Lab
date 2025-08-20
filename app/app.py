@@ -5,6 +5,7 @@ import os
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # Required for sessions
 DB_PATH = "database.db"  # Single database file
+SECURE_MODE = False  # Change to True for secure mode
 
 # Database helper
 def get_db_connection():
@@ -83,11 +84,19 @@ def login():
         password = request.form["password"]
 
         conn = get_db_connection()
-        # Use parameterized query to prevent SQL injection
-        user = conn.execute(
-            "SELECT * FROM users WHERE username=? AND password=?",
-            (username, password)
-        ).fetchone()
+
+        if SECURE_MODE:
+            # ✅ Secure: parameterized query
+            user = conn.execute(
+                "SELECT * FROM users WHERE username=? AND password=?",
+                (username, password)
+            ).fetchone()
+        else:
+            # ❌ Vulnerable: raw string concatenation (SQLi possible!)
+            query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
+            print("DEBUG (insecure query):", query)  # Optional, to see it in logs
+            user = conn.execute(query).fetchone()
+
         conn.close()
 
         if user:
@@ -97,6 +106,8 @@ def login():
             return "Invalid credentials"
 
     return render_template("login.html")
+
+
 
 @app.route("/profile")
 def profile():
