@@ -1,13 +1,14 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Profile</title>
-</head>
-<body>
-    <h1>Welcome, {{ user["username"] }}!</h1>
-    <p>Your user ID is: {{ user["id"] }}</p>
+<h1>Welcome, {{ user['username'] }}!</h1>
 
-    <a href="{{ url_for('home') }}">Home</a> |
-    <a href="{{ url_for('logout') }}">Logout</a>
-</body>
-</html>
+<form method="POST">
+  <label for="bio">Your Bio:</label><br>
+  <textarea name="bio" id="bio" rows="4" cols="50">{{ user['bio'] or '' }}</textarea><br>
+  <button type="submit">Update Bio</button>
+</form>
+
+<p><strong>Bio Preview:</strong></p>
+{% if SECURE_MODE %}
+  <p>{{ user['bio'] }}</p> <!-- secure: escaped -->
+{% else %}
+  <p>{{ user['bio']|safe }}</p> <!-- vulnerable: raw HTML rendered -->
+{% endif %}

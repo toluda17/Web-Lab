@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session
 import sqlite3
 import os
+from markupsafe import escape 
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # Required for sessions
@@ -109,15 +110,31 @@ def login():
 
 
 
-@app.route("/profile")
+@app.route("/profile", methods=["GET", "POST"])
 def profile():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
     conn = get_db_connection()
     user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
-    conn.close()
 
+    if request.method == "POST":
+        bio = request.form["bio"]
+
+        if SECURE_MODE:
+            # ✅ Secure: escape user input before saving
+            bio_to_save = escape(bio)
+        else:
+            # ❌ Vulnerable: save raw user input (XSS possible!)
+            bio_to_save = bio
+
+        conn.execute("UPDATE users SET bio=? WHERE id=?", (bio_to_save, user["id"]))
+        conn.commit()
+
+        # Refresh user after update
+        user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+
+    conn.close()
     return render_template("profile.html", user=user)
 
 @app.route("/logout")

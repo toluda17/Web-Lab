@@ -15,3 +15,7 @@ This allows attackers to manipulate the query and bypass authentication.
 3. The resulting SQL query looks like this:
    ```sql
    SELECT * FROM users WHERE username='admin' OR '1'='1' AND password='test'
+
+## Secure Fix
+
+When SECURE_MODE=True, the app uses parameterized queries, preventing SQL injection.
