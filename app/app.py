@@ -6,6 +6,7 @@ from markupsafe import escape
 from flask_wtf import FlaskForm
 from wtforms import PasswordField, SubmitField
 from wtforms.validators import DataRequired
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # Required for sessions
@@ -66,17 +67,24 @@ def home():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    error = None  # To store any error message
+    error = None
 
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
 
-        conn = get_db_connection()  # <- use the same helper as other routes
+        conn = get_db_connection()
         try:
+            if SECURE_MODE:
+                # ✅ Secure: hash the password before saving
+                password_to_store = generate_password_hash(password)
+            else:
+                # ❌ Vulnerable: store plain-text password
+                password_to_store = password
+
             conn.execute(
-                "INSERT INTO users (username, password) VALUES (?, ?)", 
-                (username, password)
+                "INSERT INTO users (username, password) VALUES (?, ?)",
+                (username, password_to_store)
             )
             conn.commit()
             return "Registration successful!"
@@ -97,15 +105,17 @@ def login():
         conn = get_db_connection()
 
         if SECURE_MODE:
-            # ✅ Secure: parameterized query
-            user = conn.execute(
-                "SELECT * FROM users WHERE username=? AND password=?",
-                (username, password)
-            ).fetchone()
+            # ✅ Secure: check hashed password
+            user = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            if user and check_password_hash(user["password"], password):
+                session["user_id"] = user["id"]
+                return redirect(url_for("profile"))
+            else:
+                user = None  # treat as invalid
         else:
-            # ❌ Vulnerable: raw string concatenation (SQLi possible!)
+            # ❌ Vulnerable: plain-text password comparison
             query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
-            print("DEBUG (insecure query):", query)  # Optional, to see it in logs
+            print("DEBUG (insecure login):", query)
             user = conn.execute(query).fetchone()
 
         conn.close()
@@ -117,6 +127,7 @@ def login():
             return "Invalid credentials"
 
     return render_template("login.html")
+
 
 
 
