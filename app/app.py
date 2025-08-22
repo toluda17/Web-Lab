@@ -1,16 +1,19 @@
-from flask import Flask, render_template, render_template_string, request, redirect, url_for, session
+from flask import Flask, render_template, render_template_string, request, redirect, url_for, session, flash, send_from_directory
 import sqlite3
 import os
+import werkzeug.utils
 from markupsafe import escape 
 from flask_wtf import FlaskForm
 from wtforms import PasswordField, SubmitField
 from wtforms.validators import DataRequired
 
-
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # Required for sessions
 DB_PATH = "database.db"  # Single database file
 SECURE_MODE = False  # Change to True for secure mode
+
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Database helper
 def get_db_connection():
@@ -52,7 +55,6 @@ def init_db():
         print("Users table already exists, skipping initialization")
 
     conn.close()
-
 
 class ChangePasswordForm(FlaskForm):
     password = PasswordField("New Password", validators=[DataRequired()])
@@ -181,6 +183,44 @@ def change_password():
             </form>
         """
 
+@app.route("/upload", methods=["GET", "POST"])
+def upload():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    message = ""
+    if request.method == "POST":
+        uploaded_file = request.files.get("file")
+        if uploaded_file:
+            filename = werkzeug.utils.secure_filename(uploaded_file.filename)
+
+            if SECURE_MODE:
+                # ✅ Secure: only allow certain file types
+                allowed_exts = ["txt", "jpg", "png", "pdf", "jpeg"]
+                if filename.split(".")[-1].lower() not in allowed_exts:
+                    message = "File type not allowed!"
+                else:
+                    uploaded_file.save(os.path.join(UPLOAD_FOLDER, filename))
+                    message = f"File safely uploaded as {filename}"
+            else:
+                # ❌ Vulnerable: accept anything
+                uploaded_file.save(os.path.join(UPLOAD_FOLDER, filename))
+                message = f"File uploaded to {UPLOAD_FOLDER}\\{filename}"
+
+    # Simple upload form
+    return f"""
+        <h2>Upload a file</h2>
+        <form method="POST" enctype="multipart/form-data">
+            <input type="file" name="file">
+            <button type="submit">Upload</button>
+        </form>
+        <p>{message}</p>
+    """
+
+# Route to serve uploaded files
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 @app.route("/logout")
 def logout():
@@ -190,10 +230,6 @@ def logout():
 @app.route("/search")
 def search():
     return "TODO: implement search functionality"
-
-@app.route("/upload", methods=["GET", "POST"])
-def upload():
-    return "TODO: implement file upload functionality"
 
 if __name__ == "__main__":
     if not os.path.exists(DB_PATH):
