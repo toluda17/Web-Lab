@@ -150,29 +150,36 @@ def change_password():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
-    form = ChangePasswordForm()
-    if form.validate_on_submit():
-        new_password = form.password.data
-
-        # 🔒 Secure: CSRF token automatically checked
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE users SET password = ? WHERE id = ?",
-            (new_password, session["user_id"])
-        )
-        conn.commit()
-        conn.close()
-
-        return "Password changed successfully!"
-
-    return render_template_string("""
-        <form method="POST">
-            {{ form.hidden_tag() }}
-            {{ form.password.label }} {{ form.password() }}<br>
-            {{ form.submit() }}
-        </form>
-    """, form=form)
+    if SECURE_MODE:
+        form = ChangePasswordForm()
+        if form.validate_on_submit():
+            new_password = form.password.data
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.execute("UPDATE users SET password = ? WHERE id = ?", (new_password, session["user_id"]))
+                conn.commit()
+            return "Password changed successfully (secure)!"
+        return render_template_string("""
+            <form method="POST">
+                {{ form.hidden_tag() }}
+                {{ form.password.label }} {{ form.password() }}<br>
+                {{ form.submit() }}
+            </form>
+        """, form=form)
+    else:
+        # ❌ Vulnerable path: no CSRF token required
+        if request.method == "POST":
+            new_password = request.form.get("password", "")
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.execute("UPDATE users SET password = ? WHERE id = ?", (new_password, session["user_id"]))
+                conn.commit()
+            return "Password changed (insecure, no CSRF)!"
+        return """
+            <form method="POST">
+                <label>New Password:</label>
+                <input type="password" name="password" />
+                <button type="submit">Change</button>
+            </form>
+        """
 
 
 @app.route("/logout")
