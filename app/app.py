@@ -1,7 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, render_template_string, request, redirect, url_for, session
 import sqlite3
 import os
 from markupsafe import escape 
+from flask_wtf import FlaskForm
+from wtforms import PasswordField, SubmitField
+from wtforms.validators import DataRequired
+
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # Required for sessions
@@ -49,6 +53,10 @@ def init_db():
 
     conn.close()
 
+
+class ChangePasswordForm(FlaskForm):
+    password = PasswordField("New Password", validators=[DataRequired()])
+    submit = SubmitField("Change")
 
 @app.route("/")
 def home():
@@ -137,6 +145,36 @@ def profile():
     conn.close()
     return render_template("profile.html", user=user)
 
+@app.route("/change_password", methods=["GET", "POST"])
+def change_password():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    form = ChangePasswordForm()
+    if form.validate_on_submit():
+        new_password = form.password.data
+
+        # 🔒 Secure: CSRF token automatically checked
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET password = ? WHERE id = ?",
+            (new_password, session["user_id"])
+        )
+        conn.commit()
+        conn.close()
+
+        return "Password changed successfully!"
+
+    return render_template_string("""
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            {{ form.password.label }} {{ form.password() }}<br>
+            {{ form.submit() }}
+        </form>
+    """, form=form)
+
+
 @app.route("/logout")
 def logout():
     session.pop("user_id", None)
@@ -154,3 +192,4 @@ if __name__ == "__main__":
     if not os.path.exists(DB_PATH):
         init_db()
     app.run(host="0.0.0.0", port=5000, debug=True)
+
